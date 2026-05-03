@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<!--
+  SAMPLE VULNERABLE WEB APP — FOR SECURITY TESTING PURPOSES ONLY
+  This application intentionally contains security vulnerabilities for pen testing.
+  DO NOT deploy this in a production environment.
+
+  Intentional vulnerabilities embedded for testing:
+  1. [AUTH-003]  No brute force protection on login
+  2. [CRYPTO-004] Hardcoded API key in client-side JavaScript
+  3. [INPUT-001]  XSS via unsanitized innerHTML rendering of user input
+  4. [SESSION-004] Session cookie missing Secure and HttpOnly flags (set by JS)
+  5. [HEADERS-*]  Missing all security headers
+  6. [HEADERS-007] Server version exposed via meta tag
+  7. [ERROR-001]  Verbose error messages with stack trace simulation
+  8. [DATA-002]   Full credit card number displayed in profile
+  9. [SECRETS-001] Database connection string in JS comment
+  10. [AUTHZ-003]  IDOR simulation — user can access other user profiles by ID
+  11. [COMP-002]   External scripts without SRI
+  12. [INPUT-003]  No CSRF protection on forms
+  13. [CRYPTO-002] References to MD5 for password hashing
+  14. [SESSION-003] No session timeout
+  15. AUTH-002: No MFA option
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- VULN: Server version disclosure via meta tag [HEADERS-007] -->
+  <meta name="generator" content="VulnApp Server v1.2.3 / Apache 2.4.18 / PHP 7.2">
+  <title>VulnBank — Online Banking Portal</title>
+  <!-- VULN: External CDN scripts without SRI hashes [COMP-002] -->
+  <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f5f5; }
+    .header { background: #003366; color: white; padding: 15px 30px; }
+    .header h1 { margin: 0; font-size: 1.5rem; }
+    .nav-bar { background: #004488; padding: 8px 30px; display: flex; gap: 20px; }
+    .nav-bar a { color: #cce; text-decoration: none; font-size: .9rem; }
+    .nav-bar a:hover { color: white; }
+    .container { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
+    .card { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .card h2 { font-size: 1.2rem; border-bottom: 2px solid #003366; padding-bottom: 10px; margin-bottom: 16px; color: #003366; }
+    input[type=text], input[type=password], input[type=email] { width: 100%; padding: 8px 12px; margin: 6px 0 12px; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; }
+    button { padding: 9px 20px; background: #003366; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: .9rem; }
+    button:hover { background: #004488; }
+    .alert-danger { background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; padding: 12px; color: #721c24; margin-bottom: 12px; }
+    .alert-success { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; padding: 12px; color: #155724; margin-bottom: 12px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .acct-num { font-family: monospace; font-size: 1.3rem; letter-spacing: 3px; }
+    .balance { font-size: 2rem; font-weight: bold; color: #003366; }
+    .transaction-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    .transaction-table th { background: #f0f4f8; padding: 8px 12px; text-align: left; }
+    .transaction-table td { padding: 8px 12px; border-bottom: 1px solid #eee; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: .75rem; font-weight: bold; }
+    .tag-credit { background: #d4edda; color: #155724; }
+    .tag-debit { background: #f8d7da; color: #721c24; }
+    #errorOutput { background: #1a1a1a; color: #ff6b6b; font-family: monospace; font-size: .8rem; padding: 12px; border-radius: 4px; display: none; white-space: pre; overflow-x: auto; }
+    .profile-card { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .profile-field label { font-size: .75rem; font-weight: bold; color: #666; text-transform: uppercase; }
+    .profile-field .value { font-size: .95rem; color: #333; margin-top: 3px; }
+    .cc-reveal { font-family: monospace; font-size: 1.1rem; color: #721c24; background: #f8d7da; padding: 6px 12px; border-radius: 4px; }
+    footer { background: #003366; color: #99aacc; text-align: center; padding: 15px; font-size: .8rem; margin-top: 40px; }
+    .debug-bar { background: #fff3cd; border: 1px solid #ffc107; padding: 8px 12px; font-size: .75rem; font-family: monospace; display: flex; gap: 20px; }
+    .tab-nav { display: flex; gap: 0; border-bottom: 2px solid #003366; margin-bottom: 20px; }
+    .tab-nav button { background: none; border: none; border-bottom: 2px solid transparent; color: #666; padding: 8px 16px; cursor: pointer; font-size: .9rem; border-radius: 0; margin-bottom: -2px; }
+    .tab-nav button.active { color: #003366; border-bottom-color: #003366; font-weight: 600; }
+    .search-box { display: flex; gap: 8px; margin-bottom: 16px; }
+    .search-box input { flex: 1; }
+  </style>
+</head>
+<body>
+
+<!-- VULN DEBUG: Debug info visible [HEADERS-007, ERROR-001] -->
+<div class="debug-bar">
+  🔧 DEBUG MODE | Server: Apache/2.4.18 | PHP/7.2.34 | DB: MySQL 5.7 @ 10.0.0.5:3306 | Session: <?php echo session_id(); ?> | User: guest | IP: 192.168.1.1
+</div>
+
+<div class="header">
+  <h1>🏦 VulnBank Online Portal</h1>
+</div>
+<div class="nav-bar">
+  <a href="#" onclick="showPanel('login')">Login</a>
+  <a href="#" onclick="showPanel('register')">Register</a>
+  <a href="#" onclick="showPanel('dashboard')">Dashboard</a>
+  <a href="#" onclick="showPanel('profile')">Profile</a>
+  <a href="#" onclick="showPanel('transfer')">Transfer</a>
+  <a href="#" onclick="showPanel('search')">Search</a>
+  <a href="#" onclick="showPanel('admin')">Admin</a>
+</div>
+
+<div class="container">
+
+  <!-- LOGIN PANEL [VULN: AUTH-003, AUTH-002, CRYPTO-004] -->
+  <div id="panel-login" class="panel active">
+    <div class="card">
+      <h2>🔑 Login to VulnBank</h2>
+      <!-- VULN: No CSRF token [INPUT-003] -->
+      <form id="loginForm" onsubmit="doLogin(event)">
+        <label>Username / Email</label>
+        <input type="text" id="loginUser" placeholder="e.g. admin@vulnbank.com" value="">
+        <label>Password</label>
+        <input type="password" id="loginPass" placeholder="Enter your password">
+        <!-- VULN: No MFA option [AUTH-002] -->
+        <div style="font-size:.8rem;color:#999;margin-bottom:12px;">No MFA? That's fine, we trust you.</div>
+        <button type="submit">Login</button>
+        <!-- VULN: No brute force protection, no lockout, no CAPTCHA [AUTH-003] -->
+        <p style="font-size:.75rem;color:#999;margin-top:8px;">Having trouble? You can try as many times as you like — no lockout!</p>
+      </form>
+      <div id="loginError" class="alert-danger" style="display:none;margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- REGISTER PANEL [VULN: AUTH-005, CRYPTO-006] -->
+  <div id="panel-register" class="panel">
+    <div class="card">
+      <h2>📝 Create Account</h2>
+      <form onsubmit="doRegister(event)">
+        <label>Email</label>
+        <input type="email" id="regEmail" placeholder="your@email.com">
+        <label>Password (any length, we'll MD5 it!)</label>
+        <!-- VULN: Password length note reveals weak hashing algorithm [CRYPTO-006] -->
+        <input type="password" id="regPass" placeholder="Even '123' works! Hashed with MD5 for security.">
+        <label>Full Name</label>
+        <input type="text" id="regName" placeholder="John Doe">
+        <label>SSN (required for account)</label>
+        <!-- VULN: Collecting excessive PII [DATA-001] -->
+        <input type="text" id="regSSN" placeholder="123-45-6789">
+        <label>Mother's Maiden Name</label>
+        <input type="text" id="regMaiden" placeholder="Required for 'security questions'">
+        <button type="submit">Create Account</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- DASHBOARD PANEL -->
+  <div id="panel-dashboard" class="panel">
+    <div class="card">
+      <h2>📊 Account Dashboard — Welcome, John!</h2>
+      <!-- VULN: Debug info exposed to user -->
+      <div style="font-size:.75rem;color:#999;margin-bottom:12px;">Session ID: js-fakesession-abc123 | Token: eyJhbGciOiJub25lIn0.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiYWRtaW4ifQ.</div>
+      <div style="display:flex;gap:30px;margin-bottom:20px;flex-wrap:wrap;">
+        <div><div style="font-size:.75rem;color:#666;">Checking Account</div><div class="acct-num">4532 0151 1234 5678</div><div class="balance">$24,500.00</div></div>
+        <div><div style="font-size:.75rem;color:#666;">Savings Account</div><div class="acct-num">4532 0151 8765 4321</div><div class="balance">$67,200.00</div></div>
+      </div>
+      <h3 style="font-size:1rem;margin-bottom:10px;">Recent Transactions</h3>
+      <table class="transaction-table">
+        <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Type</th></tr></thead>
+        <tbody>
+          <tr><td>2024-01-15</td><td>Amazon.com Purchase</td><td>$124.99</td><td><span class="tag tag-debit">DEBIT</span></td></tr>
+          <tr><td>2024-01-14</td><td>Salary Deposit — Acme Corp</td><td>$5,200.00</td><td><span class="tag tag-credit">CREDIT</span></td></tr>
+          <tr><td>2024-01-13</td><td>Electric Bill Payment</td><td>$89.50</td><td><span class="tag tag-debit">DEBIT</span></td></tr>
+          <tr><td>2024-01-12</td><td>ATM Withdrawal</td><td>$200.00</td><td><span class="tag tag-debit">DEBIT</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PROFILE PANEL [VULN: DATA-002, AUTHZ-003] -->
+  <div id="panel-profile" class="panel">
+    <div class="card">
+      <h2>👤 User Profile</h2>
+      <!-- VULN: IDOR — change user ID to access other profiles [AUTHZ-003] -->
+      <div style="margin-bottom:16px;display:flex;gap:8px;align-items:center;">
+        <label style="font-size:.875rem;">View User ID:</label>
+        <input type="number" id="profileUserId" value="1" style="width:80px;" onchange="loadProfile()">
+        <button onclick="loadProfile()">Load Profile</button>
+        <span style="font-size:.75rem;color:#999;">Try other IDs — user 2, 3, etc!</span>
+      </div>
+      <div id="profileContent">
+        <div class="profile-card">
+          <div class="profile-field"><label>Full Name</label><div class="value">John Doe</div></div>
+          <div class="profile-field"><label>Email</label><div class="value">john.doe@example.com</div></div>
+          <div class="profile-field"><label>SSN</label>
+            <!-- VULN: SSN displayed in full [DATA-002] -->
+            <div class="value" style="color:red;font-family:monospace;">123-45-6789</div>
+          </div>
+          <div class="profile-field"><label>Phone</label><div class="value">+1 (555) 123-4567</div></div>
+          <div class="profile-field"><label>Credit Card</label>
+            <!-- VULN: Full CC number displayed [DATA-002] -->
+            <div class="cc-reveal">4532-0151-1234-5678 (CVV: 123)</div>
+          </div>
+          <div class="profile-field"><label>Password Hash</label>
+            <!-- VULN: MD5 hash exposed [CRYPTO-006, DATA-002] -->
+            <div class="value" style="font-family:monospace;font-size:.85rem;">MD5: 5f4dcc3b5aa765d61d8327deb882cf99</div>
+          </div>
+          <div class="profile-field"><label>Mother's Maiden Name</label><div class="value">Smith</div></div>
+          <div class="profile-field"><label>Internal Notes</label><div class="value">DB Row: users_table id=1, shard=prod-db-01</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRANSFER PANEL [VULN: INPUT-001 XSS, INPUT-003 CSRF] -->
+  <div id="panel-transfer" class="panel">
+    <div class="card">
+      <h2>💸 Transfer Funds</h2>
+      <!-- VULN: No CSRF protection [INPUT-003] -->
+      <form onsubmit="doTransfer(event)">
+        <label>Recipient Account</label>
+        <input type="text" id="transferTo" placeholder="Account number">
+        <label>Amount</label>
+        <input type="text" id="transferAmount" placeholder="e.g. 500.00">
+        <label>Memo / Note</label>
+        <!-- VULN: User input rendered into DOM without sanitization [INPUT-001] -->
+        <input type="text" id="transferMemo" placeholder="e.g. Rent payment — or try: <img src=x onerror=alert('XSS')>">
+        <button type="submit">Submit Transfer</button>
+      </form>
+      <div id="transferResult" style="margin-top:12px;"></div>
+      <!-- VULN: Verbose error output [ERROR-001] -->
+      <div id="errorOutput"></div>
+    </div>
+  </div>
+
+  <!-- SEARCH PANEL [VULN: INPUT-001 reflected XSS] -->
+  <div id="panel-search" class="panel">
+    <div class="card">
+      <h2>🔍 Account Search</h2>
+      <div class="search-box">
+        <input type="text" id="searchQuery" placeholder="Search accounts... (try: &lt;script&gt;alert(1)&lt;/script&gt;)">
+        <button onclick="doSearch()">Search</button>
+      </div>
+      <!-- VULN: Reflected XSS — search term rendered unescaped [INPUT-001] -->
+      <div id="searchResults"></div>
+    </div>
+  </div>
+
+  <!-- ADMIN PANEL [VULN: AUTHZ-001, AUTHZ-002 — no auth check on admin panel] -->
+  <div id="panel-admin" class="panel">
+    <div class="card">
+      <h2>⚙️ Admin Panel</h2>
+      <!-- VULN: Admin panel accessible without authentication or privilege check [AUTHZ-001, AUTHZ-002] -->
+      <div class="alert-danger">⚠️ This is the admin panel — but no authentication check is performed! Any user can access this.</div>
+      <div class="tab-nav">
+        <button class="active">Users</button>
+        <button>Config</button>
+        <button>Logs</button>
+      </div>
+      <table class="transaction-table">
+        <thead><tr><th>ID</th><th>Email</th><th>Password Hash</th><th>Role</th><th>SSN</th><th>Actions</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>john.doe@example.com</td><td style="font-family:monospace;font-size:.75rem;">5f4dcc3b5aa765d61d8327deb882cf99 (MD5)</td><td>admin</td><td>123-45-6789</td><td><a href="#">Edit</a> | <a href="#">Delete</a></td></tr>
+          <tr><td>2</td><td>jane.smith@example.com</td><td style="font-family:monospace;font-size:.75rem;">7c222fb2927d828af22f592134e8932480637c0d (SHA1)</td><td>user</td><td>987-65-4321</td><td><a href="#">Edit</a> | <a href="#">Delete</a></td></tr>
+          <tr><td>3</td><td>bob.jones@example.com</td><td style="font-family:monospace;font-size:.75rem;">e10adc3949ba59abbe56e057f20f883e (MD5: "123456")</td><td>user</td><td>456-78-9012</td><td><a href="#">Edit</a> | <a href="#">Delete</a></td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top:20px;">
+        <h3 style="font-size:1rem;margin-bottom:10px;">System Configuration</h3>
+        <!-- VULN: Sensitive config exposed [SECRETS-001, SECRETS-002] -->
+        <div style="font-family:monospace;font-size:.8rem;background:#1a1a1a;color:#00ff00;padding:16px;border-radius:4px;white-space:pre;">
+DB_HOST=10.0.0.5:3306
+DB_NAME=vulnbank_prod
+DB_USER=root
+DB_PASS=Sup3rS3cr3tPa$$w0rd!
+STRIPE_KEY=sk_test_EXAMPLE_REPLACE_WITH_REAL_KEY_DO_NOT_COMMIT
+SENDGRID_API_KEY=SG.test_key_abc123def456ghi789
+JWT_SECRET=mysecretkey123
+ADMIN_TOKEN=Bearer admin-override-token-xyz789
+AWS_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  VulnBank Online Portal v1.2.3 | Apache/2.4.18 | PHP/7.2.34 | &copy; 2024 VulnBank Inc.
+  <!-- VULN: Version info in footer [HEADERS-007] -->
+</footer>
+
+<script>
+// ============================================================
+// VULNBANK CLIENT-SIDE JAVASCRIPT
+// SECURITY NOTE: This file contains intentional vulnerabilities
+// ============================================================
+
+// VULN: Hardcoded API keys in client-side JavaScript [CRYPTO-004, SECRETS-001]
+const CONFIG = {
+  apiKey: "sk_test_EXAMPLE_REPLACE_WITH_REAL_KEY_DO_NOT_COMMIT",        // Stripe live key
+  dbConnectionString: "mysql://root:Sup3rS3cr3tPa$$w0rd!@10.0.0.5:3306/vulnbank_prod",
+  jwtSecret: "mysecretkey123",                          // Used to sign JWTs
+  adminToken: "Bearer admin-override-token-xyz789",
+  awsAccessKey: "AKIAIOSFODNN7EXAMPLE",
+  awsSecretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+  encryptionKey: "aes-128-dont-tell-anyone",
+  internalApiUrl: "https://internal-api.vulnbank.local/v2"
+};
+
+// VULN: Session cookie set without Secure or HttpOnly flags [SESSION-004]
+// In a real app this would be set via HTTP, but simulating client-side for demo
+document.cookie = "session_id=js-fakesession-abc123; path=/";  // Missing: Secure; HttpOnly; SameSite
+document.cookie = "auth_token=eyJhbGciOiJub25lIn0.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiYWRtaW4ifQ.; path=/";
+
+// VULN: JWT with "alg: none" — signature verification disabled
+// Token above decodes to: {"alg":"none"}.{"user_id":1,"role":"admin"}
+
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+function doLogin(e) {
+  e.preventDefault();
+  const user = document.getElementById('loginUser').value;
+  const pass = document.getElementById('loginPass').value;
+
+  // VULN: Login attempts not tracked, no rate limiting [AUTH-003]
+  // VULN: Password compared in plaintext in JavaScript [CRYPTO-006]
+  if (user === 'admin' && pass === 'admin') {
+    // VULN: Default credentials work [AUTH-006]
+    showPanel('dashboard');
+  } else if (user && pass) {
+    showPanel('dashboard'); // Let anyone in for demo
+  } else {
+    const errEl = document.getElementById('loginError');
+    // VULN: Error reveals whether user exists [ERROR-001]
+    errEl.innerHTML = `Login failed. Debug: user="${user}" not found in users table. SQL: SELECT * FROM users WHERE email='${user}' AND password=MD5('${pass}')`;
+    errEl.style.display = 'block';
+  }
+}
+
+function doRegister(e) {
+  e.preventDefault();
+  // VULN: No password complexity requirements [AUTH-005]
+  const pass = document.getElementById('regPass').value;
+  console.log(`Registering with MD5 hash: ${btoa(pass)}`); // Logging sensitive data
+  alert('Account created! Your password was hashed with MD5: ' + btoa(pass));
+}
+
+function doTransfer(e) {
+  e.preventDefault();
+  const memo = document.getElementById('transferMemo').value;
+  const amount = document.getElementById('transferAmount').value;
+  const to = document.getElementById('transferTo').value;
+
+  // VULN: Unescaped user input rendered directly into DOM [INPUT-001] — XSS
+  document.getElementById('transferResult').innerHTML =
+    `<div class="alert-success">Transfer of $${amount} to ${to} submitted.<br>Memo: ${memo}</div>`;
+
+  // VULN: Simulated stack trace in error output [ERROR-001]
+  if (!to || !amount) {
+    const trace = `TypeError: Cannot read property 'accountId' of undefined
+    at TransferController.validateTransfer (TransferController.js:47:12)
+    at processTransfer (app.js:123:8)
+    at Object.<anonymous> (app.js:200:3)
+DB Query: INSERT INTO transfers (from_id, to_account, amount, memo) VALUES (1, '${to}', '${amount}', '${memo}')
+DB Connection: mysql://root:Sup3rS3cr3tPa\$\$w0rd!@10.0.0.5:3306/vulnbank_prod`;
+    document.getElementById('errorOutput').textContent = trace;
+    document.getElementById('errorOutput').style.display = 'block';
+  }
+}
+
+function doSearch() {
+  const query = document.getElementById('searchQuery').value;
+  // VULN: Search query reflected unescaped into DOM [INPUT-001] — Reflected XSS
+  document.getElementById('searchResults').innerHTML =
+    `<p>Search results for: <strong>${query}</strong></p>
+     <p>Found 0 accounts matching "${query}"</p>
+     <div class="alert-danger">SQL Error: SELECT * FROM accounts WHERE name LIKE '%${query}%' — Connection error</div>`;
+}
+
+function loadProfile() {
+  const userId = document.getElementById('profileUserId').value;
+  // VULN: No server-side authorization check — IDOR [AUTHZ-003]
+  // In simulation, just show different "users" to demonstrate IDOR concept
+  const users = {
+    1: { name: 'John Doe', email: 'john.doe@example.com', ssn: '123-45-6789', cc: '4532-0151-1234-5678 (CVV: 123)', role: 'admin' },
+    2: { name: 'Jane Smith', email: 'jane.smith@example.com', ssn: '987-65-4321', cc: '5425-2334-3010-9903 (CVV: 456)', role: 'user' },
+    3: { name: 'Bob Jones', email: 'bob.jones@example.com', ssn: '456-78-9012', cc: '3714-496353-98431 (CVV: 789)', role: 'user' },
+    4: { name: 'Alice Admin', email: 'alice@vulnbank.com', ssn: '111-22-3333', cc: '4111-1111-1111-1111 (CVV: 000)', role: 'superadmin' }
+  };
+  const user = users[userId] || { name: 'Unknown', email: 'N/A', ssn: 'N/A', cc: 'N/A', role: 'N/A' };
+  document.getElementById('profileContent').innerHTML = `
+    <div class="profile-card">
+      <div class="profile-field"><label>Full Name</label><div class="value">${user.name}</div></div>
+      <div class="profile-field"><label>Email</label><div class="value">${user.email}</div></div>
+      <div class="profile-field"><label>SSN</label><div class="value" style="color:red;font-family:monospace;">${user.ssn}</div></div>
+      <div class="profile-field"><label>Role</label><div class="value">${user.role}</div></div>
+      <div class="profile-field"><label>Credit Card</label><div class="cc-reveal">${user.cc}</div></div>
+      <div class="profile-field"><label>Internal DB ID</label><div class="value">users_table row_id=${userId}</div></div>
+    </div>`;
+}
+
+// VULN: Sensitive data in console logs (visible in DevTools) [SECRETS-001]
+console.log("App initialized. Config:", CONFIG);
+console.log("DB Connection:", CONFIG.dbConnectionString);
+console.log("JWT Secret:", CONFIG.jwtSecret);
+</script>
+
+</body>
+</html>

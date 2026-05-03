@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{REPORT_TITLE}} — Security Assessment Report</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --critical: #dc2626; --critical-bg: #fef2f2; --critical-border: #fca5a5;
+    --high: #ea580c; --high-bg: #fff7ed; --high-border: #fed7aa;
+    --medium: #ca8a04; --medium-bg: #fefce8; --medium-border: #fde047;
+    --low: #2563eb; --low-bg: #eff6ff; --low-border: #bfdbfe;
+    --info: #6b7280; --info-bg: #f9fafb; --info-border: #e5e7eb;
+    --compliant: #16a34a; --compliant-bg: #f0fdf4; --compliant-border: #bbf7d0;
+    --partial: #7c3aed; --partial-bg: #faf5ff; --partial-border: #ddd6fe;
+    --na: #9ca3af; --na-bg: #f3f4f6; --na-border: #e5e7eb;
+    --dark: #111827; --mid: #374151; --light: #6b7280; --bg: #f8fafc; --white: #ffffff;
+    --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,.1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--dark); line-height: 1.5; }
+
+  /* Layout */
+  .page-header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: white; padding: 32px 40px; }
+  .page-header h1 { font-size: 1.875rem; font-weight: 700; margin-bottom: 4px; }
+  .page-header .meta { opacity: .8; font-size: .875rem; display: flex; gap: 24px; flex-wrap: wrap; margin-top: 8px; }
+  .page-header .meta span { display: flex; align-items: center; gap: 6px; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 0 40px 60px; }
+
+  /* Tabs */
+  .tabs { background: white; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }
+  .tabs-inner { max-width: 1400px; margin: 0 auto; padding: 0 40px; display: flex; gap: 0; }
+  .tab-btn { padding: 16px 20px; border: none; background: none; cursor: pointer; font-size: .9rem; font-weight: 500; color: var(--light); border-bottom: 3px solid transparent; transition: all .15s; }
+  .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .tab-btn:hover:not(.active) { color: var(--mid); background: #f8fafc; }
+  .tab-panel { display: none; padding-top: 32px; }
+  .tab-panel.active { display: block; }
+
+  /* Summary Cards */
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+  .stat-card { background: white; border: 1px solid #e5e7eb; border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+  .stat-card .label { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--light); margin-bottom: 8px; }
+  .stat-card .value { font-size: 2rem; font-weight: 700; color: var(--dark); }
+  .stat-card .sub { font-size: .8rem; color: var(--light); margin-top: 4px; }
+  .stat-card.crit { border-left: 4px solid var(--critical); }
+  .stat-card.high { border-left: 4px solid var(--high); }
+  .stat-card.med { border-left: 4px solid var(--medium); }
+  .stat-card.low-c { border-left: 4px solid var(--low); }
+  .stat-card.pass { border-left: 4px solid var(--compliant); }
+
+  /* Chart Section */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+  .chart-card { background: white; border: 1px solid #e5e7eb; border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+  .chart-card h3 { font-size: 1rem; font-weight: 600; color: var(--mid); margin-bottom: 20px; }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Toolbar */
+  .toolbar { background: white; border: 1px solid #e5e7eb; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; box-shadow: var(--shadow); }
+  .toolbar input[type=search] { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: .875rem; outline: none; }
+  .toolbar input[type=search]:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+  .filter-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filter-chip { padding: 6px 12px; border: 1px solid #e5e7eb; border-radius: 20px; font-size: .8rem; font-weight: 500; cursor: pointer; background: white; transition: all .15s; color: var(--mid); }
+  .filter-chip.active { background: #2563eb; border-color: #2563eb; color: white; }
+  .filter-chip:hover:not(.active) { border-color: #9ca3af; }
+  .export-btn { margin-left: auto; padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: .875rem; font-weight: 500; cursor: pointer; }
+  .export-btn:hover { background: #1d4ed8; }
+  .results-count { font-size: .8rem; color: var(--light); margin-right: 8px; }
+
+  /* Findings */
+  .findings-list { display: flex; flex-direction: column; gap: 12px; }
+  .finding-card { background: white; border: 1px solid #e5e7eb; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); transition: box-shadow .15s; }
+  .finding-card:hover { box-shadow: var(--shadow-md); }
+  .finding-header { padding: 16px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+  .finding-header:hover { background: #f8fafc; }
+  .finding-body { padding: 0 20px 20px; display: none; border-top: 1px solid #f3f4f6; }
+  .finding-body.open { display: block; padding-top: 16px; }
+  .finding-chevron { margin-left: auto; color: var(--light); transition: transform .2s; font-size: 1.2rem; }
+  .finding-chevron.open { transform: rotate(180deg); }
+
+  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .badge-critical { background: var(--critical-bg); color: var(--critical); border: 1px solid var(--critical-border); }
+  .badge-high { background: var(--high-bg); color: var(--high); border: 1px solid var(--high-border); }
+  .badge-medium { background: var(--medium-bg); color: #854d0e; border: 1px solid var(--medium-border); }
+  .badge-low { background: var(--low-bg); color: var(--low); border: 1px solid var(--low-border); }
+  .badge-informational { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-border); }
+  .badge-compliant { background: var(--compliant-bg); color: var(--compliant); border: 1px solid var(--compliant-border); }
+  .badge-partial { background: var(--partial-bg); color: var(--partial); border: 1px solid var(--partial-border); }
+  .badge-na { background: var(--na-bg); color: var(--na); border: 1px solid var(--na-border); }
+  .badge-cia-c { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .badge-cia-i { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+  .badge-cia-a { background: #faf5ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+  .badge-mitigation { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
+
+  .control-id { font-family: monospace; font-size: .85rem; color: var(--light); min-width: 100px; }
+  .control-name { font-weight: 600; font-size: .95rem; flex: 1; }
+  .family-tag { font-size: .75rem; color: var(--light); background: #f3f4f6; padding: 2px 8px; border-radius: 4px; }
+
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .detail-section { }
+  .detail-section h4 { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--light); margin-bottom: 8px; }
+  .detail-section p { font-size: .875rem; color: var(--mid); line-height: 1.6; }
+  .mitigation-banner { background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 12px 16px; margin: 12px 0; display: flex; gap: 10px; align-items: flex-start; }
+  .mitigation-banner .icon { font-size: 1.2rem; }
+  .mitigation-banner p { font-size: .875rem; color: #14532d; line-height: 1.5; }
+  .remediation-box { background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 6px; padding: 12px 16px; margin-top: 12px; }
+  .remediation-box h4 { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #0369a1; margin-bottom: 8px; }
+  .remediation-box p { font-size: .875rem; color: #0c4a6e; line-height: 1.6; }
+
+  /* Compliant list */
+  .compliant-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .compliant-card { background: var(--compliant-bg); border: 1px solid var(--compliant-border); border-radius: var(--radius); padding: 14px 16px; }
+  .compliant-card .cid { font-family: monospace; font-size: .8rem; color: #166534; }
+  .compliant-card .cname { font-weight: 600; font-size: .875rem; color: #14532d; margin: 4px 0 2px; }
+  .compliant-card .cevidence { font-size: .8rem; color: #166534; }
+
+  /* CIA Legend */
+  .cia-legend { display: flex; gap: 16px; margin-bottom: 20px; }
+  .cia-item { display: flex; align-items: center; gap: 8px; font-size: .875rem; }
+  .cia-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .container { padding: 0 16px 40px; }
+    .page-header { padding: 24px 16px; }
+    .tabs-inner { padding: 0 16px; }
+    .charts-row { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: 1fr; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .no-results { text-align: center; padding: 40px; color: var(--light); font-size: .95rem; }
+
+  .section-header { font-size: 1.2rem; font-weight: 700; color: var(--dark); margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+  .section-divider { height: 1px; background: #e5e7eb; margin: 32px 0; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1 id="reportTitle">{{REPORT_TITLE}}</h1>
+  <div class="meta">
+    <span>🎯 Target: <strong id="targetName">{{TARGET_NAME}}</strong></span>
+    <span>📅 Date: <strong id="reportDate">{{REPORT_DATE}}</strong></span>
+    <span>🔬 Tester: <strong>AI Pen Tester v1.0</strong></span>
+    <span>📋 Framework: <strong id="framework">{{FRAMEWORK}}</strong></span>
+    <span>🌐 Scope: <strong id="scope">{{SCOPE}}</strong></span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tabs-inner">
+    <button class="tab-btn active" onclick="switchTab('summary')">📊 Summary</button>
+    <button class="tab-btn" onclick="switchTab('findings')">🔴 Findings</button>
+    <button class="tab-btn" onclick="switchTab('compliant')">✅ Compliant</button>
+    <button class="tab-btn" onclick="switchTab('all')">📋 All Controls</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- SUMMARY TAB -->
+  <div id="tab-summary" class="tab-panel active">
+    <div class="summary-grid">
+      <div class="stat-card"><div class="label">Total Controls Tested</div><div class="value" id="totalControls">0</div><div class="sub">across all families</div></div>
+      <div class="stat-card pass"><div class="label">Compliant</div><div class="value" id="totalCompliant" style="color:var(--compliant)">0</div><div class="sub" id="compliantPct"></div></div>
+      <div class="stat-card crit"><div class="label">🔴 Critical</div><div class="value" id="totalCritical" style="color:var(--critical)">0</div><div class="sub">non-compliant</div></div>
+      <div class="stat-card high"><div class="label">🟠 High</div><div class="value" id="totalHigh" style="color:var(--high)">0</div><div class="sub">non-compliant</div></div>
+      <div class="stat-card med"><div class="label">🟡 Medium</div><div class="value" id="totalMedium" style="color:var(--medium)">0</div><div class="sub">non-compliant</div></div>
+      <div class="stat-card low-c"><div class="label">🔵 Low</div><div class="value" id="totalLow" style="color:var(--low)">0</div><div class="sub">non-compliant</div></div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>Compliance Status</h3>
+        <div class="chart-wrap"><canvas id="complianceChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Severity Distribution</h3>
+        <div class="chart-wrap"><canvas id="severityChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>CIA Triad Impact</h3>
+        <div class="chart-wrap"><canvas id="ciaChart"></canvas></div>
+      </div>
+    </div>
+
+    <div style="background:white;border:1px solid #e5e7eb;border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);margin-bottom:24px;">
+      <h3 style="font-size:1rem;font-weight:600;color:var(--mid);margin-bottom:16px;">Findings by Control Family</h3>
+      <div class="chart-wrap" style="height:260px;"><canvas id="familyChart"></canvas></div>
+    </div>
+
+    <div style="background:white;border:1px solid #e5e7eb;border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);">
+      <h3 style="font-size:1rem;font-weight:600;color:var(--mid);margin-bottom:12px;">Mitigations Summary</h3>
+      <p style="font-size:.875rem;color:var(--mid);">
+        <span id="mitigationCount" style="font-weight:700;font-size:1.4rem;color:#065f46;">0</span>
+        non-compliant controls have identified mitigations that reduce effective risk.
+        <span id="noMitigationCount" style="font-weight:700;font-size:1.4rem;color:var(--critical);margin-left:16px;">0</span>
+        require remediation with no current mitigation.
+      </p>
+    </div>
+  </div>
+
+  <!-- FINDINGS TAB -->
+  <div id="tab-findings" class="tab-panel">
+    <div class="toolbar">
+      <input type="search" id="searchInput" placeholder="Search by control name, ID, family, finding..." oninput="applyFilters()">
+      <div class="filter-group" id="severityFilters">
+        <span style="font-size:.8rem;color:var(--light);font-weight:600;align-self:center;">Severity:</span>
+        <button class="filter-chip active" data-filter="severity" data-value="all" onclick="toggleFilter(this)">All</button>
+        <button class="filter-chip" data-filter="severity" data-value="CRITICAL" onclick="toggleFilter(this)">🔴 Critical</button>
+        <button class="filter-chip" data-filter="severity" data-value="HIGH" onclick="toggleFilter(this)">🟠 High</button>
+        <button class="filter-chip" data-filter="severity" data-value="MEDIUM" onclick="toggleFilter(this)">🟡 Medium</button>
+        <button class="filter-chip" data-filter="severity" data-value="LOW" onclick="toggleFilter(this)">🔵 Low</button>
+        <button class="filter-chip" data-filter="severity" data-value="INFORMATIONAL" onclick="toggleFilter(this)">⚪ Info</button>
+      </div>
+      <div class="filter-group" id="familyFilters">
+        <span style="font-size:.8rem;color:var(--light);font-weight:600;align-self:center;">Family:</span>
+        <button class="filter-chip active" data-filter="family" data-value="all" onclick="toggleFilter(this)">All</button>
+      </div>
+      <div class="filter-group">
+        <span style="font-size:.8rem;color:var(--light);font-weight:600;align-self:center;">Mitigation:</span>
+        <button class="filter-chip active" data-filter="mitigation" data-value="all" onclick="toggleFilter(this)">All</button>
+        <button class="filter-chip" data-filter="mitigation" data-value="yes" onclick="toggleFilter(this)">✅ Has Mitigation</button>
+        <button class="filter-chip" data-filter="mitigation" data-value="no" onclick="toggleFilter(this)">❌ No Mitigation</button>
+      </div>
+      <span class="results-count" id="resultsCount"></span>
+      <button class="export-btn" onclick="exportCSV()">⬇️ Export CSV</button>
+    </div>
+
+    <div id="findingsList" class="findings-list"></div>
+    <div id="noResults" class="no-results" style="display:none">No findings match your current filters.</div>
+  </div>
+
+  <!-- COMPLIANT TAB -->
+  <div id="tab-compliant" class="tab-panel">
+    <div class="section-header">✅ Compliant Controls (<span id="compliantCount">0</span>)</div>
+    <div id="compliantGrid" class="compliant-grid"></div>
+  </div>
+
+  <!-- ALL CONTROLS TAB -->
+  <div id="tab-all" class="tab-panel">
+    <div class="toolbar">
+      <input type="search" id="allSearchInput" placeholder="Search all controls..." oninput="applyAllFilters()">
+      <div class="filter-group">
+        <button class="filter-chip active" data-filter="allstatus" data-value="all" onclick="toggleAllFilter(this)">All</button>
+        <button class="filter-chip" data-filter="allstatus" data-value="COMPLIANT" onclick="toggleAllFilter(this)">Compliant</button>
+        <button class="filter-chip" data-filter="allstatus" data-value="NON-COMPLIANT" onclick="toggleAllFilter(this)">Non-Compliant</button>
+        <button class="filter-chip" data-filter="allstatus" data-value="NOT APPLICABLE" onclick="toggleAllFilter(this)">N/A</button>
+        <button class="filter-chip" data-filter="allstatus" data-value="PARTIALLY COMPLIANT" onclick="toggleAllFilter(this)">Partial</button>
+      </div>
+    </div>
+    <div id="allControlsTable" style="background:white;border:1px solid #e5e7eb;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);">
+      <table style="width:100%;border-collapse:collapse;font-size:.875rem;">
+        <thead>
+          <tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb;">
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:var(--mid);">Control ID</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:var(--mid);">Name</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:var(--mid);">Family</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:var(--mid);">CIA</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:var(--mid);">Status</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:var(--mid);">Severity</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600;color:var(--mid);">Mitigation</th>
+          </tr>
+        </thead>
+        <tbody id="allControlsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// DATA — populated by pen tester when generating report
+// ============================================================
+const REPORT_DATA = {{REPORT_DATA_JSON}};
+
+// ============================================================
+// STATE
+// ============================================================
+let activeFilters = { severity: 'all', family: 'all', mitigation: 'all' };
+let activeAllFilters = { allstatus: 'all' };
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  populateStats();
+  buildCharts();
+  buildFindingsList();
+  buildCompliantList();
+  buildAllControlsTable();
+  populateFamilyFilters();
+});
+
+function populateStats() {
+  const data = REPORT_DATA;
+  const nonCompliant = data.findings.filter(f => f.status === 'NON-COMPLIANT' || f.status === 'NON-COMPLIANT WITH MITIGATION');
+
+  document.getElementById('totalControls').textContent = data.all_controls.length;
+  document.getElementById('totalCompliant').textContent = data.summary.compliant;
+  document.getElementById('compliantPct').textContent =
+    `${Math.round(data.summary.compliant / data.all_controls.length * 100)}% pass rate`;
+  document.getElementById('totalCritical').textContent = data.summary.critical;
+  document.getElementById('totalHigh').textContent = data.summary.high;
+  document.getElementById('totalMedium').textContent = data.summary.medium;
+  document.getElementById('totalLow').textContent = data.summary.low;
+  document.getElementById('compliantCount').textContent = data.summary.compliant;
+
+  const withMit = data.findings.filter(f => f.has_mitigation).length;
+  const noMit = data.findings.filter(f => !f.has_mitigation && f.status !== 'COMPLIANT' && f.status !== 'NOT APPLICABLE').length;
+  document.getElementById('mitigationCount').textContent = withMit;
+  document.getElementById('noMitigationCount').textContent = noMit;
+}
+
+function buildCharts() {
+  const data = REPORT_DATA.summary;
+
+  // Compliance donut
+  new Chart(document.getElementById('complianceChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Compliant', 'Non-Compliant', 'Partial', 'N/A'],
+      datasets: [{ data: [data.compliant, data.non_compliant, data.partial, data.na],
+        backgroundColor: ['#16a34a','#dc2626','#7c3aed','#9ca3af'],
+        borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+  });
+
+  // Severity bar
+  new Chart(document.getElementById('severityChart'), {
+    type: 'bar',
+    data: {
+      labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
+      datasets: [{ data: [data.critical, data.high, data.medium, data.low, data.info || 0],
+        backgroundColor: ['#dc2626','#ea580c','#ca8a04','#2563eb','#9ca3af'] }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { ticks: { font: { size: 11 } } } } }
+  });
+
+  // CIA impact
+  const findings = REPORT_DATA.findings;
+  const cCt = findings.filter(f => f.cia.includes('C') && f.status !== 'COMPLIANT').length;
+  const iCt = findings.filter(f => f.cia.includes('I') && f.status !== 'COMPLIANT').length;
+  const aCt = findings.filter(f => f.cia.includes('A') && f.status !== 'COMPLIANT').length;
+  new Chart(document.getElementById('ciaChart'), {
+    type: 'polarArea',
+    data: {
+      labels: ['Confidentiality', 'Integrity', 'Accessibility'],
+      datasets: [{ data: [cCt, iCt, aCt], backgroundColor: ['rgba(37,99,235,.7)','rgba(22,163,74,.7)','rgba(124,58,237,.7)'] }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+  });
+
+  // Family bar
+  const families = [...new Set(REPORT_DATA.all_controls.map(c => c.family))];
+  const familyCounts = families.map(f => REPORT_DATA.findings.filter(fd => fd.family === f && fd.status !== 'COMPLIANT' && fd.status !== 'NOT APPLICABLE').length);
+  new Chart(document.getElementById('familyChart'), {
+    type: 'bar',
+    data: {
+      labels: families,
+      datasets: [{ label: 'Non-Compliant', data: familyCounts, backgroundColor: '#2563eb' }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { font: { size: 11 } } } } }
+  });
+}
+
+function buildFindingsList() {
+  const findings = REPORT_DATA.findings.filter(f => f.status !== 'COMPLIANT' && f.status !== 'NOT APPLICABLE');
+  const container = document.getElementById('findingsList');
+  container.innerHTML = '';
+
+  findings.forEach((f, idx) => {
+    const card = document.createElement('div');
+    card.className = 'finding-card';
+    card.dataset.severity = f.severity || '';
+    card.dataset.family = f.family || '';
+    card.dataset.mitigation = f.has_mitigation ? 'yes' : 'no';
+    card.dataset.searchText = `${f.id} ${f.name} ${f.family} ${f.finding} ${f.cia}`.toLowerCase();
+
+    const sevClass = (f.severity || 'informational').toLowerCase();
+    card.innerHTML = `
+      <div class="finding-header" onclick="toggleFinding(${idx})">
+        <span class="control-id">${f.id}</span>
+        <span class="control-name">${f.name}</span>
+        <span class="family-tag">${f.family}</span>
+        ${f.cia.split(',').map(c => `<span class="badge badge-cia-${c.trim()}">${c.trim() === 'C' ? '🔒 Conf' : c.trim() === 'I' ? '🔏 Integ' : '🔑 Access'}</span>`).join('')}
+        <span class="badge badge-${sevClass}">${f.severity}</span>
+        ${f.has_mitigation ? '<span class="badge badge-mitigation">🛡️ Mitigated</span>' : ''}
+        <span class="finding-chevron" id="chev-${idx}">▼</span>
+      </div>
+      <div class="finding-body" id="body-${idx}">
+        <div class="detail-grid">
+          <div class="detail-section">
+            <h4>What Was Found</h4>
+            <p>${f.finding}</p>
+          </div>
+          <div class="detail-section">
+            <h4>Control Statement</h4>
+            <p>${f.control_statement || 'See controls library.'}</p>
+          </div>
+        </div>
+        ${f.has_mitigation ? `
+        <div class="mitigation-banner">
+          <div class="icon">🛡️</div>
+          <div><strong>Existing Mitigation Found:</strong><br><p>${f.mitigation_description}</p></div>
+        </div>` : ''}
+        <div class="remediation-box">
+          <h4>Best-Practice Remediation</h4>
+          <p>${f.remediation}</p>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          ${f.owasp ? `<span class="badge badge-na">OWASP: ${f.owasp}</span>` : ''}
+          ${f.nist ? `<span class="badge badge-na">NIST: ${f.nist}</span>` : ''}
+          ${f.iso ? `<span class="badge badge-na">ISO: ${f.iso}</span>` : ''}
+        </div>
+      </div>`;
+    container.appendChild(card);
+  });
+
+  updateResultsCount();
+}
+
+function toggleFinding(idx) {
+  const body = document.getElementById(`body-${idx}`);
+  const chev = document.getElementById(`chev-${idx}`);
+  body.classList.toggle('open');
+  chev.classList.toggle('open');
+}
+
+function buildCompliantList() {
+  const compliant = REPORT_DATA.all_controls.filter(c => c.status === 'COMPLIANT');
+  const grid = document.getElementById('compliantGrid');
+  compliant.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'compliant-card';
+    div.innerHTML = `<div class="cid">${c.id}</div><div class="cname">✅ ${c.name}</div><div class="cevidence">${c.evidence || 'Verified compliant.'}</div>`;
+    grid.appendChild(div);
+  });
+}
+
+function buildAllControlsTable() {
+  const tbody = document.getElementById('allControlsBody');
+  REPORT_DATA.all_controls.forEach(c => {
+    const statusClass = c.status === 'COMPLIANT' ? 'compliant' : c.status === 'NOT APPLICABLE' ? 'na' : c.status === 'PARTIALLY COMPLIANT' ? 'partial' : c.severity ? c.severity.toLowerCase() : 'informational';
+    const row = document.createElement('tr');
+    row.style.borderBottom = '1px solid #f3f4f6';
+    row.dataset.status = c.status;
+    row.dataset.allSearchText = `${c.id} ${c.name} ${c.family}`.toLowerCase();
+    row.innerHTML = `
+      <td style="padding:10px 16px;font-family:monospace;font-size:.8rem;color:var(--light)">${c.id}</td>
+      <td style="padding:10px 16px;font-weight:500">${c.name}</td>
+      <td style="padding:10px 16px"><span class="family-tag">${c.family}</span></td>
+      <td style="padding:10px 16px">${c.cia.split(',').map(x => `<span class="badge badge-cia-${x.trim()}">${x.trim()}</span>`).join(' ')}</td>
+      <td style="padding:10px 16px"><span class="badge badge-${statusClass}">${c.status}</span></td>
+      <td style="padding:10px 16px">${c.severity ? `<span class="badge badge-${c.severity.toLowerCase()}">${c.severity}</span>` : '—'}</td>
+      <td style="padding:10px 16px">${c.has_mitigation ? '✅' : c.status === 'COMPLIANT' ? '—' : '❌'}</td>`;
+    tbody.appendChild(row);
+  });
+}
+
+function populateFamilyFilters() {
+  const families = [...new Set(REPORT_DATA.findings.filter(f => f.status !== 'COMPLIANT' && f.status !== 'NOT APPLICABLE').map(f => f.family))].sort();
+  const container = document.getElementById('familyFilters');
+  families.forEach(fam => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-chip';
+    btn.dataset.filter = 'family';
+    btn.dataset.value = fam;
+    btn.textContent = fam;
+    btn.onclick = function() { toggleFilter(this); };
+    container.appendChild(btn);
+  });
+}
+
+// ============================================================
+// FILTERS
+// ============================================================
+function toggleFilter(btn) {
+  const filterType = btn.dataset.filter;
+  const value = btn.dataset.value;
+  document.querySelectorAll(`[data-filter="${filterType}"]`).forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeFilters[filterType] = value;
+  applyFilters();
+}
+
+function toggleAllFilter(btn) {
+  const filterType = btn.dataset.filter;
+  document.querySelectorAll(`[data-filter="${filterType}"]`).forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeAllFilters[filterType] = btn.dataset.value;
+  applyAllFilters();
+}
+
+function applyFilters() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const cards = document.querySelectorAll('.finding-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const sevMatch = activeFilters.severity === 'all' || card.dataset.severity === activeFilters.severity;
+    const famMatch = activeFilters.family === 'all' || card.dataset.family === activeFilters.family;
+    const mitMatch = activeFilters.mitigation === 'all' || card.dataset.mitigation === activeFilters.mitigation;
+    const searchMatch = !search || card.dataset.searchText.includes(search);
+    const show = sevMatch && famMatch && mitMatch && searchMatch;
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('noResults').style.display = visible === 0 ? '' : 'none';
+  updateResultsCount(visible);
+}
+
+function applyAllFilters() {
+  const search = document.getElementById('allSearchInput').value.toLowerCase();
+  const rows = document.querySelectorAll('#allControlsBody tr');
+  rows.forEach(row => {
+    const statusMatch = activeAllFilters.allstatus === 'all' || row.dataset.status === activeAllFilters.allstatus;
+    const searchMatch = !search || row.dataset.allSearchText.includes(search);
+    row.style.display = statusMatch && searchMatch ? '' : 'none';
+  });
+}
+
+function updateResultsCount(count) {
+  const total = document.querySelectorAll('.finding-card').length;
+  const visible = count !== undefined ? count : total;
+  document.getElementById('resultsCount').textContent = `${visible} of ${total} findings`;
+}
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ============================================================
+// CSV EXPORT
+// ============================================================
+function exportCSV() {
+  const findings = REPORT_DATA.findings.filter(f => f.status !== 'COMPLIANT' && f.status !== 'NOT APPLICABLE');
+  const headers = ['Control ID','Name','Family','CIA','Status','Severity','Has Mitigation','Finding','Remediation'];
+  const rows = findings.map(f => [f.id, f.name, f.family, f.cia, f.status, f.severity || '', f.has_mitigation ? 'Yes' : 'No', f.finding.replace(/,/g,''), f.remediation.replace(/,/g,'')]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'security-findings.csv';
+  a.click();
+}
+</script>
+</body>
+</html>
